@@ -1,21 +1,32 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock } from 'lucide-react';
-
-const ADMIN_PASSWORD = 'admin123'; // In a real app, this should be stored securely
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import { Lock, Shield } from 'lucide-react';
+import { auth, db } from '../firebase'; // Ensure Firebase is initialized
 
 const AdminLogin = () => {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
-      sessionStorage.setItem('isAdmin', 'true');
-      navigate('/admin/dashboard');
-    } else {
-      setError('Invalid password');
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Check if the user is an admin in Firestore
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists() && userDoc.data().isAdmin) {
+        sessionStorage.setItem('isAdmin', 'true');
+        navigate('/admin/dashboard');
+      } else {
+        setError('Access denied: Not an admin');
+      }
+    } catch (err) {
+      setError('Invalid email or password');
     }
   };
 
@@ -25,7 +36,7 @@ const AdminLogin = () => {
         <div className="text-center">
           <Shield className="mx-auto h-12 w-12 text-blue-500" />
           <h2 className="mt-6 text-3xl font-bold text-gray-900">Admin Access</h2>
-          <p className="mt-2 text-gray-600">Enter admin password to continue</p>
+          <p className="mt-2 text-gray-600">Enter your admin credentials</p>
         </div>
 
         {error && (
@@ -36,21 +47,28 @@ const AdminLogin = () => {
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-6 bg-white p-8 rounded-xl shadow-lg">
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-              Admin Password
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="Admin Email"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Lock className="h-5 w-5 text-gray-400" />
-              </div>
+              <Lock className="absolute inset-y-0 left-0 pl-3 h-5 w-5 text-gray-400" />
               <input
-                id="password"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="pl-10 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Enter admin password"
+                placeholder="Enter password"
               />
             </div>
           </div>

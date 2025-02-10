@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Clock, CheckCircle, Bell } from 'lucide-react';
-import login from './images/login.jpg'
+import login from './images/login.jpg';
+import { db } from '../firebase';  // Firebase setup
+import { collection, addDoc } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const SlotBooking = () => {
   const [selectedDate, setSelectedDate] = useState('');
@@ -10,6 +13,9 @@ const SlotBooking = () => {
   const [success, setSuccess] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  const auth = getAuth();
+  const user = auth.currentUser;
 
   const availableSlots = [
     '06:00 AM - 07:00 AM',
@@ -21,18 +27,21 @@ const SlotBooking = () => {
   ];
 
   useEffect(() => {
-    // Load notifications from localStorage
     const storedNotifications = JSON.parse(localStorage.getItem('notifications') || '[]');
     setNotifications(storedNotifications);
   }, []);
 
   useEffect(() => {
-    // Save notifications to localStorage
     localStorage.setItem('notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  const handleBooking = (e: React.FormEvent) => {
+  const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!user) {
+      setError('You must be logged in to book a slot.');
+      return;
+    }
 
     if (!selectedDate || !selectedTime) {
       setError('Please select a date and time slot.');
@@ -43,7 +52,15 @@ const SlotBooking = () => {
     setError('');
     setSuccess(false);
 
-    setTimeout(() => {
+    try {
+      await addDoc(collection(db, 'slotBookings'), {
+        selectedDate,
+        selectedTime,
+        status: 'confirmed',
+        userId: user.uid, // Dynamically fetch userId
+        createdAt: new Date(),
+      });
+
       setSuccess(true);
       setNotifications((prev) => [
         ...prev,
@@ -60,9 +77,12 @@ const SlotBooking = () => {
       setTimeout(() => {
         setSuccess(false);
       }, 3000);
+    } catch (error) {
+      console.error('❌ Firestore Write Error:', error);
+      setError('Failed to book the slot. Please try again.');
+    }
 
-      setLoading(false);
-    }, 1000);
+    setLoading(false);
   };
 
   const toggleNotifications = () => {
@@ -72,12 +92,9 @@ const SlotBooking = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
-        {/* Notification Icon at the Top */}
+        {/* Notification Icon */}
         <div className="mr-20">
-          <button
-            onClick={toggleNotifications}
-            className="relative text-gray-600 hover:text-gray-900 focus:outline-none"
-          >
+          <button onClick={toggleNotifications} className="relative text-gray-600 hover:text-gray-900 focus:outline-none">
             <Bell className="w-8 h-8" />
             {notifications.length > 0 && (
               <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full px-2 py-1">
@@ -95,10 +112,7 @@ const SlotBooking = () => {
                 ) : (
                   <ul className="space-y-2">
                     {notifications.map((notification) => (
-                      <li
-                        key={notification.id}
-                        className="p-3 bg-gray-50 rounded-lg border border-gray-200"
-                      >
+                      <li key={notification.id} className="p-3 bg-gray-50 rounded-lg border border-gray-200">
                         <p className="text-sm text-gray-700">{notification.message}</p>
                         <span className="text-xs text-gray-400">{notification.timestamp}</span>
                       </li>
@@ -115,7 +129,7 @@ const SlotBooking = () => {
           <div>
             <h1 className="text-4xl font-bold text-gray-900 mb-6">Smart Gym Slot Booking</h1>
             <p className="text-lg text-gray-600 mb-6">
-              Take control of your fitness journey with our intelligent slot booking system. 
+              Take control of your fitness journey with our intelligent slot booking system.
               No more waiting in queues or overcrowded gym sessions. Book your preferred 
               time slot and enjoy a seamless workout experience.
             </p>
@@ -135,11 +149,7 @@ const SlotBooking = () => {
             </div>
           </div>
           <div>
-            <img
-              src={login}
-              alt="Gym Equipment"
-              className="rounded-lg shadow-xl w-full"
-            />
+            <img src={login} alt="Gym Equipment" className="rounded-lg shadow-xl w-full" />
           </div>
         </div>
 
@@ -150,26 +160,14 @@ const SlotBooking = () => {
             <p className="mt-2 text-gray-600">Select your preferred date and time</p>
           </div>
 
-          {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
-              <p className="text-red-700">{error}</p>
-            </div>
-          )}
-
-          {success && (
-            <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6">
-              <p className="text-green-700">
-                Slot booked successfully! Check your notifications for details.
-              </p>
-            </div>
-          )}
+          {error && <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6"><p className="text-red-700">{error}</p></div>}
+          {success && <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6"><p className="text-green-700">Slot booked successfully! Check your notifications for details.</p></div>}
 
           <div className="bg-white rounded-lg shadow-lg p-6 md:p-8">
             <form onSubmit={handleBooking} className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Calendar className="inline-block w-5 h-5 mr-2" />
-                  Select Date
+                  <Calendar className="inline-block w-5 h-5 mr-2" /> Select Date
                 </label>
                 <input
                   type="date"
@@ -183,8 +181,7 @@ const SlotBooking = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  <Clock className="inline-block w-5 h-5 mr-2" />
-                  Available Time Slots
+                  <Clock className="inline-block w-5 h-5 mr-2" /> Available Time Slots
                 </label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {availableSlots.map((slot) => (
@@ -198,10 +195,7 @@ const SlotBooking = () => {
                         onChange={(e) => setSelectedTime(e.target.value)}
                         required
                       />
-                      <label
-                        htmlFor={slot}
-                        className="block p-4 text-center rounded-lg border border-gray-200 cursor-pointer peer-checked:border-blue-500 peer-checked:bg-blue-50 hover:bg-gray-50"
-                      >
+                      <label htmlFor={slot} className="block p-4 text-center rounded-lg border border-gray-200 cursor-pointer peer-checked:border-blue-500 peer-checked:bg-blue-50 hover:bg-gray-50">
                         {slot}
                       </label>
                     </div>
@@ -209,13 +203,7 @@ const SlotBooking = () => {
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className={`w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-200 ${
-                  loading ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-              >
+              <button type="submit" disabled={loading} className={`w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition duration-200 ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 {loading ? 'Booking Slot...' : 'Book Slot'}
               </button>
             </form>
